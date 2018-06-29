@@ -763,7 +763,7 @@ func unpack240(v uint64, dst *[240]uint64) {
 }
 
 func unpack120(v uint64, dst *[240]uint64) {
-	for i := range dst {
+	for i := range dst[:120] {
 		dst[i] = 1
 	}
 }

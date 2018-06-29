@@ -2,9 +2,11 @@ package tsm1_test
 
 import (
 	"fmt"
+	"math/rand"
 	"reflect"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/influxdata/influxdb/tsdb/engine/tsm1"
@@ -1467,6 +1469,139 @@ func BenchmarkDecodeBlock_Boolean_TypeSpecific(b *testing.B) {
 		if err != nil {
 			b.Fatalf("unexpected error decoding block: %v", err)
 		}
+	}
+}
+
+func BenchmarkDecodeBooleanBlock(b *testing.B) {
+	cases := []int{
+		5,
+		55,
+		555,
+		1000,
+	}
+	for _, n := range cases {
+		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+			valueCount := n
+			times := getTimes(valueCount, 60, time.Second)
+			values := make([]tsm1.Value, len(times))
+			for i, t := range times {
+				values[i] = tsm1.NewValue(t, true)
+			}
+
+			bytes, err := tsm1.Values(values).Encode(nil)
+			if err != nil {
+				b.Fatalf("unexpected error: %v", err)
+			}
+
+			b.ResetTimer()
+			b.ReportAllocs()
+			b.SetBytes(int64(int(unsafe.Sizeof(tsm1.BooleanValue{})) * len(values)))
+
+			b.RunParallel(func(pb *testing.PB) {
+				decodedValues := make([]tsm1.BooleanValue, len(values))
+
+				for pb.Next() {
+					_, err = tsm1.DecodeBooleanBlock(bytes, &decodedValues)
+					if err != nil {
+						b.Fatalf("unexpected error decoding block: %v", err)
+					}
+				}
+			})
+
+		})
+	}
+}
+
+func BenchmarkDecodeFloatBlock(b *testing.B) {
+	cases := []int{
+		5,
+		55,
+		555,
+		1000,
+	}
+	for _, n := range cases {
+		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+			valueCount := n
+			times := getTimes(valueCount, 60, time.Second)
+			values := make([]tsm1.Value, len(times))
+			for i, t := range times {
+				values[i] = tsm1.NewValue(t, float64(i))
+			}
+
+			bytes, err := tsm1.Values(values).Encode(nil)
+			if err != nil {
+				b.Fatalf("unexpected error: %v", err)
+			}
+
+			b.ResetTimer()
+			b.ReportAllocs()
+			b.SetBytes(int64(int(unsafe.Sizeof(tsm1.FloatValue{})) * len(values)))
+
+			b.RunParallel(func(pb *testing.PB) {
+				decodedValues := make([]tsm1.FloatValue, len(values))
+
+				for pb.Next() {
+					_, err = tsm1.DecodeFloatBlock(bytes, &decodedValues)
+					if err != nil {
+						b.Fatalf("unexpected error decoding block: %v", err)
+					}
+				}
+			})
+
+		})
+	}
+}
+
+func BenchmarkDecodeIntegerBlock(b *testing.B) {
+	rle := func(i int) int64 { return int64(i) }
+	s8b := func(i int) int64 { return int64(i + int(rand.Int31n(10))) }
+
+	cases := []struct {
+		enc string
+		gen func(i int) int64
+		n   int
+	}{
+		{enc: "rle", gen: rle, n: 5},
+		{enc: "rle", gen: rle, n: 55},
+		{enc: "rle", gen: rle, n: 555},
+		{enc: "rle", gen: rle, n: 1000},
+		{enc: "s8b", gen: s8b, n: 5},
+		{enc: "s8b", gen: s8b, n: 55},
+		{enc: "s8b", gen: s8b, n: 555},
+		{enc: "s8b", gen: s8b, n: 1000},
+	}
+	for _, bm := range cases {
+		b.Run(fmt.Sprintf("%s_%d", bm.enc, bm.n), func(b *testing.B) {
+			rand.Seed(int64(bm.n * 1e3))
+
+			valueCount := bm.n
+			times := getTimes(valueCount, 60, time.Second)
+			values := make([]tsm1.Value, len(times))
+			for i, t := range times {
+				values[i] = tsm1.NewValue(t, bm.gen(i))
+			}
+
+			bytes, err := tsm1.Values(values).Encode(nil)
+			if err != nil {
+				b.Fatalf("unexpected error: %v", err)
+			}
+
+			b.ResetTimer()
+			b.ReportAllocs()
+			b.SetBytes(int64(int(unsafe.Sizeof(tsm1.IntegerValue{})) * len(values)))
+
+			b.RunParallel(func(pb *testing.PB) {
+				decodedValues := make([]tsm1.IntegerValue, len(values))
+
+				for pb.Next() {
+					_, err = tsm1.DecodeIntegerBlock(bytes, &decodedValues)
+					if err != nil {
+						b.Fatalf("unexpected error decoding block: %v", err)
+					}
+				}
+			})
+
+		})
 	}
 }
 
